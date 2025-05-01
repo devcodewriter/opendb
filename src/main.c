@@ -9,8 +9,8 @@
 
 typedef struct {
     uint32_t id;
-    char username[COLUMN_USERNAME_SIZE];
-    char email[COLUMN_EMAIL_SIZE];
+    char username[COLUMN_USERNAME_SIZE + 1];
+    char email[COLUMN_EMAIL_SIZE + 1];
 } Row;
 
 #define SIZE_OF_ATTRIBUTE(Struct, Attribute) sizeof(((Struct*)0)->Attribute)
@@ -35,6 +35,8 @@ typedef enum {
 
 typedef enum {
     PREPARE_SUCCESS,
+    PREPARE_NEGATIVE_ID,
+    PREPARE_STRING_TOO_LONG,
     PREPARE_SYNTAX_ERROR,
     PREPARE_UNRECOGNIZED_STATEMENT
 } PrepareResult;
@@ -104,6 +106,12 @@ int main(int argc, char* argv[])
         switch(prepareStatement(inputBuffer, &statement)) {
             case (PREPARE_SUCCESS):
                 break;
+            case PREPARE_NEGATIVE_ID:
+                printf("ID must be positive.\n");
+                break;
+            case PREPARE_STRING_TOO_LONG:
+                printf("String is too long.\n");
+                break;
             case (PREPARE_SYNTAX_ERROR):
                 printf("Syntax error. Could not parse statement.\n");
                 continue;
@@ -164,16 +172,24 @@ MetaCommandResult doMetaCommand(InputBuffer* inputBuffer) {
 PrepareResult prepareStatement(InputBuffer* inputBuffer, Statement* statement) {
     if (strncmp(inputBuffer->buffer, "INSERT", 6) == 0) {
         statement->type = STATEMENT_INSERT;
-        int argsAssigned = sscanf(
-            inputBuffer->buffer,
-            "INSERT %d %s %s",
-            &(statement->rowToInsert.id),
-            statement->rowToInsert.username,
-            statement->rowToInsert.email
-        );
-        if(argsAssigned < 3) {
+        char* keyword = strtok(inputBuffer->buffer, " ");
+        char* id_string = strtok(NULL, " ");
+        char* username = strtok(NULL, " ");
+        char* email = strtok(NULL, " ");
+        if (id_string == NULL || username == NULL || email == NULL) {
             return PREPARE_SYNTAX_ERROR;
         }
+        int id = atoi(id_string);
+        if(id < 0) {
+            return PREPARE_NEGATIVE_ID;
+        }
+        if (strlen(username) > COLUMN_USERNAME_SIZE || strlen(email) > COLUMN_EMAIL_SIZE) {
+            return PREPARE_STRING_TOO_LONG;
+        }
+        statement->rowToInsert.id = id;
+        strcpy(statement->rowToInsert.username, username);
+        strcpy(statement->rowToInsert.email, email);
+        free(keyword);
         return PREPARE_SUCCESS;
     }
     if (strncmp(inputBuffer->buffer, "SELECT", 6) == 0) {
